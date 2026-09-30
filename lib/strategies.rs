@@ -31,3 +31,36 @@ pub struct StrategyProfile {
     pub agent_caveat: &'static str,
     pub reference_url: &'static str,
 }
+
+
+const PROFILES: &[StrategyProfile] = &[
+    StrategyProfile {
+        id: "kivi",
+        name: "KIVI (asymmetric 2-bit quant)",
+        family: StrategyFamily::Quantization,
+        status: ImplementationStatus::Implemented,
+        retains_full_context: true,
+        tuning_free: true,
+        typical_kv_vs_fp16: "~4x smaller at 2-bit (paper ~2.6x peak incl. weights)",
+        best_for: "Long-context agents, RAG prefill reuse, parallel sessions, retrieval",
+        agent_caveat: "2-bit is lossy — watch reasoning-heavy tasks; use residual window defaults",
+        reference_url: "https://arxiv.org/abs/2402.02750",
+    },
+    StrategyProfile {
+        id: "int4-kv",
+        name: "Vanilla INT4 KV (per-token K/V)",
+        family: StrategyFamily::Quantization,
+        status: ImplementationStatus::DocumentedOnly,
+        retains_full_context: true,
+        tuning_free: true,
+        typical_kv_vs_fp16: "~4x smaller",
+        best_for: "Simple quant baseline when 4-bit quality is sufficient",
+        agent_caveat: "Does not fix 2-bit failure modes; verify packed storage not fake-quant",
+        reference_url: "https://huggingface.co/docs/transformers/kv_cache",
+    },
+];
+
+// All documented strategy profiles (KIVI first)
+pub fn all() -> &'static [StrategyProfile] {
+    PROFILES
+}
