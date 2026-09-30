@@ -64,3 +64,36 @@ const PROFILES: &[StrategyProfile] = &[
 pub fn all() -> &'static [StrategyProfile] {
     PROFILES
 }
+
+pub fn by_id(id: &str) -> Option<&'static StrategyProfile> {
+    let key = id.to_ascii_lowercase().replace('_', "-");
+    PROFILES.iter().find(|p| p.id == key)
+}
+
+// Implemented strategies only
+pub fn implemented() -> impl Iterator<Item = &'static StrategyProfile> {
+    PROFILES
+        .iter()
+        .filter(|p| p.status == ImplementationStatus::Implemented)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kivi_is_first_and_implemented() {
+        let all = all();
+        assert_eq!(all[0].id, "kivi");
+        assert_eq!(all[0].status, ImplementationStatus::Implemented);
+    }
+
+    #[test]
+    fn eviction_strategies_do_not_retain_full_context() {
+        for p in all() {
+            if p.family == StrategyFamily::Eviction {
+                assert!(!p.retains_full_context);
+            }
+        }
+    }
+}
