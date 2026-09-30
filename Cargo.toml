@@ -1,0 +1,18 @@
+[package]
+name = "kivi-cache"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Tuning-free asymmetric 2-bit KV-cache quantization (KIVI, ICML 2024)"
+author = "Marcin Bielak <marcin.bieli+github+kivi+cache@gmail.com>"
+license = "MIT"
+readme = "README.md"
+keywords = ["quantization", "kv-cache", "llm", "attention", "kivi"]
+categories = ["algorithms", "science"]
+exclude = ["target"]
+
+[dependencies]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
