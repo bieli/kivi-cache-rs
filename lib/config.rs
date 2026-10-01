@@ -1,6 +1,10 @@
 use crate::error::KiviError;
 
 // KIVI hyperparameters.
+//
+// The paper's operating point is 2 bits, group size 32, and residual length 128.
+// `residual_length` must be a multiple of `group_size` so a key flush always
+// contains whole per-channel groups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KiviConfig {
     // Quantized element width. Supported values are 2, 4, and 8.
@@ -21,4 +25,31 @@ impl Default for KiviConfig {
             residual_length: 128,
         }
     }
+}
+
+impl KiviConfig {
+    pub fn try_new(bits: u8, group_size: usize, residual_length: usize) -> Result<Self, KiviError> {
+        check_bits_group(bits, group_size)?;
+        if residual_length == 0 || residual_length % group_size != 0 {
+            return Err(KiviError::ResidualLength {
+                residual_length,
+                group_size,
+            });
+        }
+        Ok(Self {
+            bits,
+            group_size,
+            residual_length,
+        })
+    }
+}
+
+pub(crate) fn check_bits_group(bits: u8, group_size: usize) -> Result<(), KiviError> {
+    if !matches!(bits, 2 | 4 | 8) {
+        return Err(KiviError::InvalidBits(bits));
+    }
+    if group_size == 0 || (group_size * bits as usize) % 32 != 0 {
+        return Err(KiviError::MisalignedGroup { group_size, bits });
+    }
+    Ok(())
 }
