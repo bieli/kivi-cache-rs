@@ -1,14 +1,14 @@
-//! Agent-oriented KV memory planning.
-//!
-//! Answer questions like “how many parallel agent sessions fit in 24 GiB if each
-//! holds 200k tokens?” without running a model. Estimates follow the same byte
-//! layout as [`MemoryReport`](crate::MemoryReport) and [`KiviCache`](crate::KiviCache).
+// Agent-oriented KV memory planning.
+//
+// Answer questions like “how many parallel agent sessions fit in 24 GiB if each
+// holds 200k tokens?” without running a model. Estimates follow the same byte
+// layout as [`MemoryReport`](crate::MemoryReport) and [`KiviCache`](crate::KiviCache).
 
 use crate::config::KiviConfig;
 use crate::error::KiviError;
 use crate::KiviCache;
 
-/// Model shape and KIVI settings for capacity planning (no live cache required).
+// Model shape and KIVI settings for capacity planning (no live cache required).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentMemoryBudget {
     pub config: KiviConfig,
@@ -17,25 +17,25 @@ pub struct AgentMemoryBudget {
     pub head_dim: usize,
 }
 
-/// Live snapshot of one [`KiviCache`] layer plus planning numbers derived from it.
+// Live snapshot of one [`KiviCache`] layer plus planning numbers derived from it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MemoryBudgetSnapshot {
-    /// Tokens until the key residual buffer fills and flushes to packed storage.
+    // Tokens until the key residual buffer fills and flushes to packed storage.
     pub tokens_until_key_flush: usize,
     pub key_residual_tokens: usize,
     pub value_residual_tokens: usize,
     pub sequence_tokens: usize,
-    /// Packed codes + metadata + occupied fp32 residual for this layer.
+    // Packed codes + metadata + occupied fp32 residual for this layer.
     pub current_layer_bytes: usize,
-    /// Amortized packed growth per new token once context length exceeds
-    /// [`KiviConfig::residual_length`].
+    // Amortized packed growth per new token once context length exceeds
+    // [`KiviConfig::residual_length`].
     pub marginal_bytes_per_token: usize,
-    /// Preallocated fp32 residual capacity (matches [`MemoryReport::residual_capacity_bytes`]).
+    // Preallocated fp32 residual capacity (matches [`MemoryReport::residual_capacity_bytes`]).
     pub residual_capacity_bytes: usize,
 }
 
 impl AgentMemoryBudget {
-    /// Plan from hyperparameters and transformer depth.
+    // Plan from hyperparameters and transformer depth.
     pub fn try_new(
         config: KiviConfig,
         num_layers: usize,
@@ -62,7 +62,7 @@ impl AgentMemoryBudget {
         })
     }
 
-    /// Derive a planner from an existing cache and the model's layer count.
+    // Derive a planner from an existing cache and the model's layer count.
     pub fn from_cache(cache: &KiviCache, num_layers: usize) -> Result<Self, KiviError> {
         if num_layers == 0 {
             return Err(KiviError::ZeroDimension("num_layers"));
@@ -75,16 +75,16 @@ impl AgentMemoryBudget {
         })
     }
 
-    /// Average KV bytes per new token per layer (steady state, `seq >> R`).
-    ///
-    /// Averaged over one key-flush cycle once the value sliding window is full.
-    /// Individual decode steps can spike higher while keys sit in the fp32
-    /// residual; [`Self::next_token_bytes`] returns that per-step delta.
+    // Average KV bytes per new token per layer (steady state, `seq >> R`).
+    //
+    // Averaged over one key-flush cycle once the value sliding window is full.
+    // Individual decode steps can spike higher while keys sit in the fp32
+    // residual; [`Self::next_token_bytes`] returns that per-step delta.
     pub fn marginal_bytes_per_token(&self) -> usize {
         marginal_bytes_per_layer(&self.config, self.num_kv_heads, self.head_dim)
     }
 
-    /// Exact byte delta for appending one more token at `current_tokens`.
+    // Exact byte delta for appending one more token at `current_tokens`.
     pub fn next_token_bytes(&self, current_tokens: usize) -> usize {
         let now = layer_kv_bytes(
             &self.config,
@@ -101,12 +101,12 @@ impl AgentMemoryBudget {
         next - now
     }
 
-    /// fp32 residual buffers allocated by [`KiviCache::new`] for one agent (batch=1).
+    // fp32 residual buffers allocated by [`KiviCache::new`] for one agent (batch=1).
     pub fn fixed_overhead_bytes_per_agent(&self) -> usize {
         self.num_layers * residual_capacity_bytes(&self.config, self.num_kv_heads, self.head_dim)
     }
 
-    /// Estimated KV bytes for **one** agent session at `context_tokens` (all layers).
+    // Estimated KV bytes for **one** agent session at `context_tokens` (all layers).
     pub fn bytes_for_context(&self, context_tokens: usize) -> usize {
         self.num_layers
             * layer_kv_bytes(
@@ -117,12 +117,12 @@ impl AgentMemoryBudget {
             )
     }
 
-    /// Estimated KV bytes for `agents` parallel sessions, each with `context_tokens`.
+    // Estimated KV bytes for `agents` parallel sessions, each with `context_tokens`.
     pub fn bytes_for_agents(&self, agents: usize, context_tokens: usize) -> usize {
         agents * self.bytes_for_context(context_tokens)
     }
 
-    /// Maximum parallel agents that fit in `budget_bytes` with `context_tokens` each.
+    // Maximum parallel agents that fit in `budget_bytes` with `context_tokens` each.
     pub fn max_agents(&self, budget_bytes: u64, context_tokens: usize) -> usize {
         let per_agent = self.bytes_for_context(context_tokens) as u64;
         if per_agent == 0 {
@@ -131,18 +131,18 @@ impl AgentMemoryBudget {
         (budget_bytes / per_agent) as usize
     }
 
-    /// Returns whether `agents` sessions of length `context_tokens` fit in the budget.
+    // Returns whether `agents` sessions of length `context_tokens` fit in the budget.
     pub fn fits(&self, budget_bytes: u64, agents: usize, context_tokens: usize) -> bool {
         self.bytes_for_agents(agents, context_tokens) as u64 <= budget_bytes
     }
 
-    /// Dense fp16 KV baseline for the same agents and context (all layers).
+    // Dense fp16 KV baseline for the same agents and context (all layers).
     pub fn fp16_bytes_for_agents(&self, agents: usize, context_tokens: usize) -> usize {
         let elements = self.num_kv_heads * self.head_dim;
         2 * agents * self.num_layers * context_tokens * elements * 2
     }
 
-    /// `fp16 / kivi` byte ratio for the given deployment shape.
+    // `fp16 / kivi` byte ratio for the given deployment shape.
     pub fn compression_ratio_vs_fp16(&self, agents: usize, context_tokens: usize) -> f64 {
         let kivi = self.bytes_for_agents(agents, context_tokens);
         let fp16 = self.fp16_bytes_for_agents(agents, context_tokens);
@@ -154,7 +154,7 @@ impl AgentMemoryBudget {
     }
 }
 
-/// Analytical KV bytes for one transformer layer (batch = 1).
+// Analytical KV bytes for one transformer layer (batch = 1).
 pub(crate) fn layer_kv_bytes(
     config: &KiviConfig,
     num_kv_heads: usize,
