@@ -5,7 +5,7 @@ use std::fmt;
 pub enum KiviError {
     // Bit width must be 2, 4, or 8.
     InvalidBits(u8),
-    /// `group_size * bits` must be a multiple of 32 so every group fills whole `u32`s.
+    // `group_size * bits` must be a multiple of 32 so every group fills whole `u32`s.
     MisalignedGroup { group_size: usize, bits: u8 },
     // Residual length must be a positive multiple of the group size.
     ResidualLength {
