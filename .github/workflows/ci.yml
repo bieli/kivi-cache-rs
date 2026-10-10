@@ -40,4 +40,4 @@ jobs:
       - name: Run context economics CLI
         run: cargo run --release --bin kivi-cache -- econ --model llama3-8b --agents 16 --ctx 128k --bits 2
       - name: List KV strategy comparison
-+        run: cargo run --release --bin kivi-cache -- strategies --verbose
+        run: cargo run --release --bin kivi-cache -- strategies --verbose
