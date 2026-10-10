@@ -11,7 +11,7 @@ env:
 
 jobs:
   test:
-    name: Unit tests
+    name: Tests and examples
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,3 +24,20 @@ jobs:
 
       - name: Run unit and integration tests
         run: cargo test --verbose
+
+      - name: Run streaming_cache example
+        run: cargo run --example streaming_cache --release --verbose
+
+      - name: Run decode_attention example
+        run: cargo run --example decode_attention --release --verbose
+
+      - name: Run agent_memory_budget example
+        run: cargo run --example agent_memory_budget --release --verbose
+
+      - name: Run passkey_retrieval example
+        run: cargo run --example passkey_retrieval --release --verbose
+
+      - name: Run context economics CLI
+        run: cargo run --release --bin kivi-cache -- econ --model llama3-8b --agents 16 --ctx 128k --bits 2
+      - name: List KV strategy comparison
++        run: cargo run --release --bin kivi-cache -- strategies --verbose
