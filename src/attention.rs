@@ -25,12 +25,44 @@ pub(crate) fn attend_head(
     logits: &mut [f32],
     out: &mut [f32],
 ) {
-    let kq = head.keys.tokens;
-    debug_assert_eq!(logits.len(), kq + head.key_res_len);
-    debug_assert_eq!(
-        kq + head.key_res_len,
-        head.values.tokens + head.value_res_len
+    attend_head_with_suffix(
+        head,
+        &[],
+        &[],
+        0,
+        query,
+        bits,
+        group_size,
+        head_dim,
+        scale,
+        logits,
+        out,
     );
+}
+
+// Score `head` (shared prefix) and then a session-local suffix.
+//
+// Logits are in token order: quantized prefix, prefix residual, suffix.
+// The suffix is full precision and is not written back into the prefix.
+pub(crate) fn attend_head_with_suffix(
+    head: HeadView<'_>,
+    suffix_keys: &[f32],
+    suffix_values: &[f32],
+    suffix_len: usize,
+    query: &[f32],
+    bits: u8,
+    group_size: usize,
+    head_dim: usize,
+    scale: f32,
+    logits: &mut [f32],
+    out: &mut [f32],
+) {
+    let kq = head.keys.tokens;
+    let prefix = kq + head.key_res_len;
+    debug_assert_eq!(logits.len(), prefix + suffix_len);
+    debug_assert_eq!(prefix, head.values.tokens + head.value_res_len);
+    debug_assert_eq!(suffix_keys.len(), suffix_len * head_dim);
+    debug_assert_eq!(suffix_values.len(), suffix_len * head_dim);
 
     key_logits(
         head.keys,
@@ -45,7 +77,14 @@ pub(crate) fn attend_head(
         head.key_res_len,
         head_dim,
         query,
-        &mut logits[kq..],
+        &mut logits[kq..prefix],
+    );
+    dense_logits(
+        suffix_keys,
+        suffix_len,
+        head_dim,
+        query,
+        &mut logits[prefix..],
     );
     for logit in logits.iter_mut() {
         *logit *= scale;
@@ -59,9 +98,10 @@ pub(crate) fn attend_head(
         head.value_residual,
         head.value_res_len,
         head_dim,
-        &logits[vq..],
+        &logits[vq..prefix],
         out,
     );
+    dense_mix(suffix_values, suffix_len, head_dim, &logits[prefix..], out);
 }
 
 fn key_logits(

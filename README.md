@@ -53,6 +53,22 @@ println!("{:.2}x vs fp16", report.compression_ratio_vs_fp16());
 
 Grouped-query attention is supported: `num_q_heads` may be a multiple of `num_kv_heads`.
 
+## Shared RAG prefix
+
+Quantize a long document once and attach many short questions. [`KiviCache::share_prefix`](src/prefix.rs)
+freezes the layer into a [`SharedPrefix`](src/prefix.rs). `Clone` only bumps an `Arc`. Each
+[`RagSession`](src/prefix.rs) stores its question tokens in full precision and runs attention over
+the shared packed prefix plus that private suffix. [`SharedPrefix::footprint`](src/prefix.rs)
+counts the document once and compares that with an fp16 prefill per user.
+
+```rust
+let prefix = cache.share_prefix();
+let mut session = prefix.session();
+session.append(&question_keys, &question_values, question_len)?;
+let out = session.attention(&query, num_q_heads, scale)?;
+let bytes = prefix.footprint(/*sessions*/ 16, question_len);
+```
+
 ## Agent memory budget
 
 The Agent memory budget API is in place. Here is what was added:
@@ -195,6 +211,13 @@ A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, o
 
 ```bash
 cargo run --example passkey_retrieval --release
+```
+
+**`shared_prefix`** - one quantized document shared by many short questions.
+A 512-token document is stored once (2-bit, group 32, residual 128). Sixteen sessions attach an 8-token question each, without copying the document. The printout is the shared footprint against the cost of an fp16 prefill per user, and whether two sessions still point at the same prefix.
+
+```bash
+cargo run --example shared_prefix --release
 ```
 
 ## Tests

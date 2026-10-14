@@ -37,7 +37,11 @@ jobs:
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 
+      - name: Run shared_prefix example
+        run: cargo run --example shared_prefix --release --verbose
+
       - name: Run context economics CLI
         run: cargo run --release --bin kivi-cache -- econ --model llama3-8b --agents 16 --ctx 128k --bits 2
+
       - name: List KV strategy comparison
         run: cargo run --release --bin kivi-cache -- strategies --verbose

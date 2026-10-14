@@ -39,6 +39,7 @@ mod cache;
 mod config;
 mod econ;
 mod error;
+mod prefix;
 mod quant;
 mod strategies;
 
@@ -49,6 +50,7 @@ pub use econ::{
     compute_report, kv_budget_bytes, parse_context_tokens, EconInputs, EconReport, ModelPreset,
 };
 pub use error::KiviError;
+pub use prefix::{RagSession, SharedPrefix, SharedPrefixFootprint};
 pub use quant::{quantize_per_channel, quantize_per_token, QuantAxis, QuantizedTensor};
 pub use strategies::{
     all as kv_strategies, by_id as kv_strategy_by_id, implemented as implemented_kv_strategies,

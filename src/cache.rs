@@ -13,6 +13,7 @@ use crate::attention::{self, HeadView};
 use crate::budget::{self, AgentMemoryBudget, MemoryBudgetSnapshot};
 use crate::config::KiviConfig;
 use crate::error::KiviError;
+use crate::prefix::SharedPrefix;
 use crate::quant::{self, PackedStream};
 
 // Logical footprint of one cache, compared with a dense baseline.
@@ -152,6 +153,30 @@ impl KiviCache {
 
     pub fn quantized_value_tokens(&self) -> usize {
         self.value_streams.first().map(|s| s.tokens).unwrap_or(0)
+    }
+
+    pub(crate) fn key_streams(&self) -> &[PackedStream] {
+        &self.key_streams
+    }
+
+    pub(crate) fn value_streams(&self) -> &[PackedStream] {
+        &self.value_streams
+    }
+
+    pub(crate) fn key_residual(&self) -> &[f32] {
+        &self.key_residual
+    }
+
+    pub(crate) fn value_residual(&self) -> &[f32] {
+        &self.value_residual
+    }
+
+    // Freeze this layer as a read-only RAG prefix.
+    //
+    // Cloning the returned prefix is an `Arc` clone: every session shares the
+    // packed document. Later question tokens live on the session, not here.
+    pub fn share_prefix(&self) -> SharedPrefix {
+        SharedPrefix::from_cache(self)
     }
 
     // Append `seq_len` tokens. Both buffers use `[batch, num_kv_heads, seq_len, head_dim]`.
