@@ -260,6 +260,13 @@ The same 64-token sequence starts at 2 bits and residual length 32. After every 
 cargo run --example quality_guard --release
 ```
 
+**`long_context_batch`** - a larger train or eval batch at 32k and 128k on one GPU.
+Llama-3-8B weights reserve 16 GiB of a 24 GiB card. The table is the KV cost of one sequence and the batch that fits in the leftover, for fp16 and for 2-bit KIVI, at 32,768 and 131,072 tokens.
+
+```bash
+cargo run --example long_context_batch --release
+```
+
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.
 A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, outside the fp32 residual window. After the haystack is stored, one decode query tries to read the key back. The table sweeps 2/4/8 bits and residual lengths 32 and 128, and reports whether the key was recovered from packed storage.
 

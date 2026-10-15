@@ -1,4 +1,6 @@
-use kivi_cache::{AgentMemoryBudget, KiviCache, KiviConfig, KiviError, MixedPrecisionBudget};
+use kivi_cache::{
+    kv_budget_bytes, AgentMemoryBudget, KiviCache, KiviConfig, KiviError, MixedPrecisionBudget,
+};
 
 #[test]
 fn tokens_until_key_flush_tracks_residual() {
@@ -92,6 +94,23 @@ fn marginal_rate_matches_one_key_flush_cycle() {
 fn next_token_costs_more_inside_the_key_residual() {
     let plan = AgentMemoryBudget::try_new(KiviConfig::default(), 1, 8, 128).unwrap();
     assert!(plan.next_token_bytes(5000) > plan.marginal_bytes_per_token());
+}
+
+#[test]
+fn long_context_kivi_batch_exceeds_fp16_on_one_gpu() {
+    let plan = AgentMemoryBudget::try_new(KiviConfig::default(), 32, 8, 128).unwrap();
+    let budget = kv_budget_bytes(24.0, 16.0);
+    for tokens in [32_768usize, 131_072] {
+        let fp16_one = plan.fp16_bytes_for_agents(1, tokens) as u64;
+        let fp16_batch = budget / fp16_one;
+        let kivi_batch = plan.max_agents(budget, tokens) as u64;
+        assert!(kivi_batch > fp16_batch, "tokens={tokens}");
+        assert!(plan.fits(budget, kivi_batch as usize, tokens));
+        assert!(!plan.fits(budget, kivi_batch as usize + 1, tokens));
+    }
+    assert!(plan.fp16_bytes_for_agents(1, 131_072) as u64 > budget);
+    assert!(plan.max_agents(budget, 131_072) >= 1);
+    assert!(plan.max_agents(budget, 32_768) > plan.max_agents(budget, 131_072));
 }
 
 #[test]
