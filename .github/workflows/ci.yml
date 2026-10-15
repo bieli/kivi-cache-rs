@@ -49,6 +49,9 @@ jobs:
       - name: Run long_context_batch example
         run: cargo run --example long_context_batch --release --verbose
 
+      - name: Run pretrain_cost example
+        run: cargo run --example pretrain_cost --release --verbose
+
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 

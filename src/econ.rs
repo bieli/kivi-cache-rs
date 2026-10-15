@@ -195,6 +195,83 @@ pub fn compute_report(inputs: &EconInputs) -> Result<EconReport, KiviError> {
     })
 }
 
+// KV GiB and a rough bill for a training job that has not been launched.
+//
+// `inputs.agents` is the batch (sequences in parallel). `hours` is the planned
+// wall time. GPU count is how many cards of `inputs.kv_budget_bytes` the KV
+// footprint needs. Weights are not part of the KV totals.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PretrainEstimate {
+    pub context_tokens: usize,
+    pub batch: usize,
+    pub hours: f64,
+    pub usd_per_gpu_hour: f64,
+    pub kivi_kv_gib: f64,
+    pub fp16_kv_gib: f64,
+    pub kivi_gpus: usize,
+    pub fp16_gpus: usize,
+    pub kivi_usd: f64,
+    pub fp16_usd: f64,
+}
+
+impl PretrainEstimate {
+    // `fp16_usd - kivi_usd`, floored at zero.
+    pub fn saved_usd(&self) -> f64 {
+        (self.fp16_usd - self.kivi_usd).max(0.0)
+    }
+}
+
+// Plan a fine-tune from model shape, context, batch, and GPU price.
+pub fn estimate_pretrain(inputs: &EconInputs, hours: f64) -> Result<PretrainEstimate, KiviError> {
+    let plan = inputs.plan()?;
+    let hours = if hours.is_finite() {
+        hours.max(0.0)
+    } else {
+        0.0
+    };
+    let rate = if inputs.usd_per_hour.is_finite() {
+        inputs.usd_per_hour.max(0.0)
+    } else {
+        0.0
+    };
+    let kivi_bytes = plan.bytes_for_agents(inputs.agents, inputs.context_tokens) as u64;
+    let fp16_bytes = plan.fp16_bytes_for_agents(inputs.agents, inputs.context_tokens) as u64;
+    let kivi_gpus = gpus_for_kv(kivi_bytes, inputs.kv_budget_bytes);
+    let fp16_gpus = gpus_for_kv(fp16_bytes, inputs.kv_budget_bytes);
+    Ok(PretrainEstimate {
+        context_tokens: inputs.context_tokens,
+        batch: inputs.agents,
+        hours,
+        usd_per_gpu_hour: rate,
+        kivi_kv_gib: bytes_to_gib(kivi_bytes as usize),
+        fp16_kv_gib: bytes_to_gib(fp16_bytes as usize),
+        kivi_gpus,
+        fp16_gpus,
+        kivi_usd: job_usd(kivi_gpus, rate, hours),
+        fp16_usd: job_usd(fp16_gpus, rate, hours),
+    })
+}
+
+// How many GPUs with `kv_budget_bytes` of KV room hold `kv_bytes`.
+//
+// A zero budget cannot hold a non-zero footprint; that returns `usize::MAX`.
+pub fn gpus_for_kv(kv_bytes: u64, kv_budget_bytes: u64) -> usize {
+    if kv_bytes == 0 {
+        return 0;
+    }
+    if kv_budget_bytes == 0 {
+        return usize::MAX;
+    }
+    ((kv_bytes + kv_budget_bytes - 1) / kv_budget_bytes) as usize
+}
+
+fn job_usd(gpus: usize, usd_per_gpu_hour: f64, hours: f64) -> f64 {
+    if gpus == usize::MAX {
+        return f64::INFINITY;
+    }
+    gpus as f64 * usd_per_gpu_hour * hours
+}
+
 // Default KV budget: `--gpu-gb` minus model weights (floored at zero).
 pub fn kv_budget_bytes(gpu_gib: f64, weight_gib: f64) -> u64 {
     let kv_gib = (gpu_gib - weight_gib).max(0.0);

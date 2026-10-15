@@ -207,6 +207,8 @@ cargo run --release --bin kivi-cache -- models
 Built-in presets: `llama2-7b`, `llama2-13b`, `llama3-8b`, `mistral-7b`, `falcon-7b`, `longchat-7b-32k`.
 Custom shapes: `--model custom --layers 32 --kv-heads 8 --head-dim 128 --weights-gb 16`.
 
+The same report is a pre-launch training plan in `pretrain_cost`: GiB and $/h from the model shape, then a bill for the planned hours. No job is started.
+
 ## Examples
 
 Each example is a small synthetic program. None of them loads model weights.
@@ -265,6 +267,13 @@ Llama-3-8B weights reserve 16 GiB of a 24 GiB card. The table is the KV cost of 
 
 ```bash
 cargo run --example long_context_batch --release
+```
+
+**`pretrain_cost`** - a fine-tune bill before the job is launched.
+Uses the context-economics report for a Llama-3-8B shape. For a batch of 4 at 32,768 and 131,072 tokens it prints KV GiB, how many 24 GiB GPUs that needs versus fp16, and the dollar total for 8 planned hours at $2.40 per GPU-hour.
+
+```bash
+cargo run --example pretrain_cost --release
 ```
 
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.

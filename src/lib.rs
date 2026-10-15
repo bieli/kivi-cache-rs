@@ -49,7 +49,8 @@ pub use budget::{AgentMemoryBudget, MemoryBudgetSnapshot, MixedPrecisionBudget};
 pub use cache::{KiviCache, MemoryReport};
 pub use config::KiviConfig;
 pub use econ::{
-    compute_report, kv_budget_bytes, parse_context_tokens, EconInputs, EconReport, ModelPreset,
+    compute_report, estimate_pretrain, gpus_for_kv, kv_budget_bytes, parse_context_tokens,
+    EconInputs, EconReport, ModelPreset, PretrainEstimate,
 };
 pub use error::KiviError;
 pub use guard::{FlushCheck, QualityGuard, QualityPolicy, QualityUpgrade};
