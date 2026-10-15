@@ -96,6 +96,32 @@ Answer questions like *“I have 200k tokens of tool logs - can I still run 8 pa
 
 `marginal_bytes_per_token` is an **average** over a key-flush cycle once the value sliding window is full. Individual decode steps can spike higher while keys sit in the fp32 residual; use `next_token_bytes` for per-step growth.
 
+### Mixed layer precision (`MixedPrecisionBudget`)
+
+Early layers can stay at 4 bits and later layers at 2 bits. Group size, residual length, and head shape are shared. `bytes_for_context` sums the same per-layer layout used by a live cache, and `max_agents` turns that sum into a session count.
+
+| Method | Purpose |
+| --- | --- |
+| `early_wide(layers, early_layers, early_bits, late_bits, ...)` | First layers wide, the rest narrow |
+| `try_from_bits(bits_per_layer, ...)` | An explicit bit width for every layer |
+| `bytes_for_layer` / `bytes_for_context` / `bytes_for_agents` | Occupied KV bytes |
+| `max_agents` / `fits` | How many parallel sessions fit |
+| `marginal_bytes_per_token` | Steady-state bytes per new token, summed over layers |
+
+```rust
+let plan = MixedPrecisionBudget::early_wide(
+    /*layers*/ 32,
+    /*early 4-bit layers*/ 8,
+    4,
+    2,
+    /*group*/ 32,
+    /*residual*/ 128,
+    /*kv_heads*/ 8,
+    /*head_dim*/ 128,
+)?;
+println!("max agents: {}", plan.max_agents(budget_bytes, tokens));
+```
+
 ### Live cache API (`KiviCache`)
 
 | Method | Purpose |
@@ -204,6 +230,13 @@ Plans a Llama-3-8B-shaped cache (32 layers, 8 KV heads, dim 128) at the paper de
 
 ```bash
 cargo run --example agent_memory_budget --release
+```
+
+**`mixed_precision`** - early layers at 4 bits, later layers at 2 bits.
+A Llama-3-8B-shaped stack keeps the first 8 layers at 4 bits and the other 24 at 2 bits. At 200k tokens it prints the per-agent footprint and how many sessions fit in 26 GiB, next to the same budget if every layer were 2-bit or every layer were 4-bit.
+
+```bash
+cargo run --example mixed_precision --release
 ```
 
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.

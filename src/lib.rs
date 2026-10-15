@@ -43,7 +43,7 @@ mod prefix;
 mod quant;
 mod strategies;
 
-pub use budget::{AgentMemoryBudget, MemoryBudgetSnapshot};
+pub use budget::{AgentMemoryBudget, MemoryBudgetSnapshot, MixedPrecisionBudget};
 pub use cache::{KiviCache, MemoryReport};
 pub use config::KiviConfig;
 pub use econ::{

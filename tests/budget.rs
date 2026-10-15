@@ -1,4 +1,4 @@
-use kivi_cache::{AgentMemoryBudget, KiviCache, KiviConfig};
+use kivi_cache::{AgentMemoryBudget, KiviCache, KiviConfig, KiviError, MixedPrecisionBudget};
 
 #[test]
 fn tokens_until_key_flush_tracks_residual() {
@@ -103,6 +103,116 @@ fn max_agents_scales_with_budget() {
     assert_eq!(plan.max_agents(budget, 200_000), 4);
     assert!(plan.fits(budget, 4, 200_000));
     assert!(!plan.fits(budget, 5, 200_000));
+}
+
+#[test]
+fn mixed_precision_sums_wide_and_narrow_layers() {
+    let tokens = 200_000;
+    let heads = 8;
+    let dim = 128;
+    let mixed = MixedPrecisionBudget::early_wide(32, 8, 4, 2, 32, 128, heads, dim).unwrap();
+    assert_eq!(mixed.num_layers(), 32);
+    assert_eq!(mixed.layer_bits(0), Some(4));
+    assert_eq!(mixed.layer_bits(7), Some(4));
+    assert_eq!(mixed.layer_bits(8), Some(2));
+    assert_eq!(mixed.layer_bits(31), Some(2));
+    assert_eq!(mixed.layer_bits(32), None);
+
+    let wide = AgentMemoryBudget::try_new(KiviConfig::try_new(4, 32, 128).unwrap(), 8, heads, dim)
+        .unwrap();
+    let narrow =
+        AgentMemoryBudget::try_new(KiviConfig::try_new(2, 32, 128).unwrap(), 24, heads, dim)
+            .unwrap();
+    assert_eq!(
+        mixed.bytes_for_context(tokens),
+        wide.bytes_for_context(tokens) + narrow.bytes_for_context(tokens)
+    );
+    assert!(mixed.bytes_for_layer(0, tokens).unwrap() > mixed.bytes_for_layer(31, tokens).unwrap());
+}
+
+#[test]
+fn mixed_layer_bytes_match_live_caches() {
+    let plan = MixedPrecisionBudget::early_wide(2, 1, 4, 2, 32, 128, 4, 64).unwrap();
+    let seq = 300;
+    let mut total = 0;
+    for (layer, bits) in [(0usize, 4u8), (1, 2)] {
+        let cfg = KiviConfig::try_new(bits, 32, 128).unwrap();
+        let mut cache = KiviCache::new(cfg, 1, 4, 64).unwrap();
+        let n = 4 * seq * 64;
+        cache.append(&vec![0.15; n], &vec![-0.2; n], seq).unwrap();
+        let live = cache.memory().compressed_bytes();
+        assert_eq!(plan.bytes_for_layer(layer, seq).unwrap(), live);
+        total += live;
+    }
+    assert_eq!(plan.bytes_for_context(seq), total);
+}
+
+#[test]
+fn mixed_precision_sits_between_uniform_budgets() {
+    let heads = 8;
+    let dim = 128;
+    let tokens = 8_192;
+    let mixed = MixedPrecisionBudget::early_wide(32, 8, 4, 2, 32, 128, heads, dim).unwrap();
+    let all2 = AgentMemoryBudget::try_new(KiviConfig::try_new(2, 32, 128).unwrap(), 32, heads, dim)
+        .unwrap();
+    let all4 = AgentMemoryBudget::try_new(KiviConfig::try_new(4, 32, 128).unwrap(), 32, heads, dim)
+        .unwrap();
+    let mixed_one = mixed.bytes_for_context(tokens);
+    assert!(all4.bytes_for_context(tokens) > mixed_one);
+    assert!(mixed_one > all2.bytes_for_context(tokens));
+
+    let budget = mixed_one as u64 * 3;
+    assert_eq!(mixed.max_agents(budget, tokens), 3);
+    assert!(mixed.fits(budget, 3, tokens));
+    assert!(!mixed.fits(budget, 4, tokens));
+    assert!(all4.max_agents(budget, tokens) < mixed.max_agents(budget, tokens));
+    assert!(all2.max_agents(budget, tokens) >= mixed.max_agents(budget, tokens));
+    assert_eq!(mixed.bytes_for_agents(3, tokens), mixed_one * 3);
+}
+
+#[test]
+fn mixed_marginal_matches_one_flush_cycle() {
+    let plan = MixedPrecisionBudget::early_wide(4, 1, 4, 2, 32, 64, 2, 64).unwrap();
+    let cycle = plan.residual_length();
+    let start = cycle * 40;
+    let delta = plan.bytes_for_context(start + cycle) - plan.bytes_for_context(start);
+    assert_eq!(delta / cycle, plan.marginal_bytes_per_token());
+    assert_eq!(
+        plan.next_token_bytes(start),
+        plan.bytes_for_context(start + 1) - plan.bytes_for_context(start)
+    );
+}
+
+#[test]
+fn uniform_bit_schedule_matches_agent_budget() {
+    let cfg = KiviConfig::try_new(2, 32, 128).unwrap();
+    let mixed = MixedPrecisionBudget::early_wide(16, 0, 4, 2, 32, 128, 8, 128).unwrap();
+    let plan = AgentMemoryBudget::try_new(cfg, 16, 8, 128).unwrap();
+    assert!(mixed.layer_bits(0) == Some(2));
+    assert_eq!(mixed.bytes_for_context(4096), plan.bytes_for_context(4096));
+    assert_eq!(
+        mixed.fp16_bytes_for_agents(2, 4096),
+        plan.fp16_bytes_for_agents(2, 4096)
+    );
+    let ratio =
+        mixed.fp16_bytes_for_agents(2, 4096) as f64 / mixed.bytes_for_agents(2, 4096) as f64;
+    assert!((mixed.compression_ratio_vs_fp16(2, 4096) - ratio).abs() < 1e-12);
+}
+
+#[test]
+fn mixed_precision_rejects_bad_schedules() {
+    let err = MixedPrecisionBudget::early_wide(8, 9, 4, 2, 32, 128, 8, 128).unwrap_err();
+    assert_eq!(
+        err,
+        KiviError::EarlyLayers {
+            early_layers: 9,
+            num_layers: 8,
+        }
+    );
+    let err = MixedPrecisionBudget::try_from_bits(&[], 32, 128, 8, 128).unwrap_err();
+    assert!(matches!(err, KiviError::ZeroDimension("num_layers")));
+    let err = MixedPrecisionBudget::early_wide(4, 2, 4, 2, 8, 32, 1, 32).unwrap_err();
+    assert!(matches!(err, KiviError::MisalignedGroup { .. }));
 }
 
 #[test]

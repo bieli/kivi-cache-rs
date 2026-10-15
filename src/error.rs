@@ -37,6 +37,11 @@ pub enum KiviError {
         num_q_heads: usize,
         num_kv_heads: usize,
     },
+    // The 4-bit prefix of a mixed-precision stack is longer than the model.
+    EarlyLayers {
+        early_layers: usize,
+        num_layers: usize,
+    },
 }
 
 impl fmt::Display for KiviError {
@@ -77,6 +82,13 @@ impl fmt::Display for KiviError {
             } => write!(
                 f,
                 "num_q_heads {num_q_heads} must be a positive multiple of num_kv_heads {num_kv_heads}"
+            ),
+            KiviError::EarlyLayers {
+                early_layers,
+                num_layers,
+            } => write!(
+                f,
+                "early layer count {early_layers} exceeds model depth {num_layers}"
             ),
         }
     }

@@ -34,6 +34,9 @@ jobs:
       - name: Run agent_memory_budget example
         run: cargo run --example agent_memory_budget --release --verbose
 
+      - name: Run mixed_precision example
+        run: cargo run --example mixed_precision --release --verbose
+
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 

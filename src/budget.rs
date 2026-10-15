@@ -154,6 +154,165 @@ impl AgentMemoryBudget {
     }
 }
 
+// KV plan where each layer has its own bit width.
+//
+// Early layers can stay at 4 bits and later layers at 2 bits. Group size,
+// residual length, and head shape are shared. Session counts use the same
+// per-layer byte layout as [`AgentMemoryBudget`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MixedPrecisionBudget {
+    layers: Vec<KiviConfig>,
+    num_kv_heads: usize,
+    head_dim: usize,
+}
+
+impl MixedPrecisionBudget {
+    // One bit width per layer, from the first transformer block to the last.
+    pub fn try_from_bits(
+        bits_per_layer: &[u8],
+        group_size: usize,
+        residual_length: usize,
+        num_kv_heads: usize,
+        head_dim: usize,
+    ) -> Result<Self, KiviError> {
+        if bits_per_layer.is_empty() {
+            return Err(KiviError::ZeroDimension("num_layers"));
+        }
+        if num_kv_heads == 0 {
+            return Err(KiviError::ZeroDimension("num_kv_heads"));
+        }
+        let mut layers = Vec::with_capacity(bits_per_layer.len());
+        for &bits in bits_per_layer {
+            let config = KiviConfig::try_new(bits, group_size, residual_length)?;
+            if head_dim == 0 || head_dim % config.group_size != 0 {
+                return Err(KiviError::HeadDim {
+                    head_dim,
+                    group_size: config.group_size,
+                });
+            }
+            layers.push(config);
+        }
+        Ok(Self {
+            layers,
+            num_kv_heads,
+            head_dim,
+        })
+    }
+
+    // First `early_layers` use `early_bits`. The remaining layers use `late_bits`.
+    pub fn early_wide(
+        num_layers: usize,
+        early_layers: usize,
+        early_bits: u8,
+        late_bits: u8,
+        group_size: usize,
+        residual_length: usize,
+        num_kv_heads: usize,
+        head_dim: usize,
+    ) -> Result<Self, KiviError> {
+        if num_layers == 0 {
+            return Err(KiviError::ZeroDimension("num_layers"));
+        }
+        if early_layers > num_layers {
+            return Err(KiviError::EarlyLayers {
+                early_layers,
+                num_layers,
+            });
+        }
+        let mut bits = Vec::with_capacity(num_layers);
+        bits.extend(std::iter::repeat(early_bits).take(early_layers));
+        bits.extend(std::iter::repeat(late_bits).take(num_layers - early_layers));
+        Self::try_from_bits(&bits, group_size, residual_length, num_kv_heads, head_dim)
+    }
+
+    pub fn num_layers(&self) -> usize {
+        self.layers.len()
+    }
+
+    pub fn num_kv_heads(&self) -> usize {
+        self.num_kv_heads
+    }
+
+    pub fn head_dim(&self) -> usize {
+        self.head_dim
+    }
+
+    pub fn group_size(&self) -> usize {
+        self.layers[0].group_size
+    }
+
+    pub fn residual_length(&self) -> usize {
+        self.layers[0].residual_length
+    }
+
+    pub fn layer_bits(&self, layer: usize) -> Option<u8> {
+        self.layers.get(layer).map(|config| config.bits)
+    }
+
+    pub fn layer_config(&self, layer: usize) -> Option<KiviConfig> {
+        self.layers.get(layer).copied()
+    }
+
+    // Occupied KV bytes of one layer at `context_tokens`.
+    pub fn bytes_for_layer(&self, layer: usize, context_tokens: usize) -> Option<usize> {
+        self.layers
+            .get(layer)
+            .map(|config| layer_kv_bytes(config, self.num_kv_heads, self.head_dim, context_tokens))
+    }
+
+    // Sum of every layer for one agent.
+    pub fn bytes_for_context(&self, context_tokens: usize) -> usize {
+        self.layers.iter().fold(0, |sum, config| {
+            sum + layer_kv_bytes(config, self.num_kv_heads, self.head_dim, context_tokens)
+        })
+    }
+
+    pub fn bytes_for_agents(&self, agents: usize, context_tokens: usize) -> usize {
+        agents * self.bytes_for_context(context_tokens)
+    }
+
+    // Average bytes added to one agent when the context grows by one token.
+    //
+    // This is the sum across layers, taken over one key-flush cycle once every
+    // value window is full.
+    pub fn marginal_bytes_per_token(&self) -> usize {
+        self.layers.iter().fold(0, |sum, config| {
+            sum + marginal_bytes_per_layer(config, self.num_kv_heads, self.head_dim)
+        })
+    }
+
+    pub fn next_token_bytes(&self, current_tokens: usize) -> usize {
+        self.bytes_for_context(current_tokens + 1) - self.bytes_for_context(current_tokens)
+    }
+
+    pub fn max_agents(&self, budget_bytes: u64, context_tokens: usize) -> usize {
+        let per_agent = self.bytes_for_context(context_tokens) as u64;
+        if per_agent == 0 {
+            return usize::MAX;
+        }
+        (budget_bytes / per_agent) as usize
+    }
+
+    pub fn fits(&self, budget_bytes: u64, agents: usize, context_tokens: usize) -> bool {
+        self.bytes_for_agents(agents, context_tokens) as u64 <= budget_bytes
+    }
+
+    pub fn fp16_bytes_for_agents(&self, agents: usize, context_tokens: usize) -> usize {
+        let elements = self.num_kv_heads * self.head_dim;
+        2 * agents * self.num_layers() * context_tokens * elements * 2
+    }
+
+    pub fn compression_ratio_vs_fp16(&self, agents: usize, context_tokens: usize) -> f64 {
+        let kivi = self.bytes_for_agents(agents, context_tokens);
+        let fp16 = self.fp16_bytes_for_agents(agents, context_tokens);
+        if kivi == 0 {
+            1.0
+        } else {
+            fp16 as f64 / kivi as f64
+        }
+    }
+}
+
 // Analytical KV bytes for one transformer layer (batch = 1).
 pub(crate) fn layer_kv_bytes(
     config: &KiviConfig,
