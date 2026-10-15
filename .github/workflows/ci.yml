@@ -37,6 +37,9 @@ jobs:
       - name: Run mixed_precision example
         run: cargo run --example mixed_precision --release --verbose
 
+      - name: Run config_ablation example
+        run: cargo run --example config_ablation --release --verbose
+
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 

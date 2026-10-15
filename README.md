@@ -239,6 +239,13 @@ A Llama-3-8B-shaped stack keeps the first 8 layers at 4 bits and the other 24 at
 cargo run --example mixed_precision --release
 ```
 
+**`config_ablation`** - bit width and residual length on one sequence.
+The same 560-token prefill is stored at 2 and 4 bits, with residual length 32 and 128. The table is reconstruction error of K and V, attention cosine against fp32, and GiB for a 32-layer agent. It is a configuration comparison: smaller `R` keeps cosine close while the fp32 window shrinks.
+
+```bash
+cargo run --example config_ablation --release
+```
+
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.
 A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, outside the fp32 residual window. After the haystack is stored, one decode query tries to read the key back. The table sweeps 2/4/8 bits and residual lengths 32 and 128, and reports whether the key was recovered from packed storage.
 
