@@ -43,6 +43,9 @@ jobs:
       - name: Run forget_audit example
         run: cargo run --example forget_audit --release --verbose
 
+      - name: Run quality_guard example
+        run: cargo run --example quality_guard --release --verbose
+
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 

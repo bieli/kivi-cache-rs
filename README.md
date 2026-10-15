@@ -253,6 +253,13 @@ A 2-bit cache with residual length 32 is snapshotted after a 40-token prefill an
 cargo run --example forget_audit --release
 ```
 
+**`quality_guard`** - raise bits or lengthen the residual when attention drifts.
+The same 64-token sequence starts at 2 bits and residual length 32. After every key flush the guard scores a probe query against fp32 attention. If the cosine falls below 0.995, one guard rebuilds the layer at a wider bit width and the other doubles the residual window.
+
+```bash
+cargo run --example quality_guard --release
+```
+
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.
 A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, outside the fp32 residual window. After the haystack is stored, one decode query tries to read the key back. The table sweeps 2/4/8 bits and residual lengths 32 and 128, and reports whether the key was recovered from packed storage.
 
