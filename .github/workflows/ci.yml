@@ -40,6 +40,9 @@ jobs:
       - name: Run config_ablation example
         run: cargo run --example config_ablation --release --verbose
 
+      - name: Run forget_audit example
+        run: cargo run --example forget_audit --release --verbose
+
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 

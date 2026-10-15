@@ -42,6 +42,7 @@ mod error;
 mod prefix;
 mod quant;
 mod strategies;
+mod trace;
 
 pub use budget::{AgentMemoryBudget, MemoryBudgetSnapshot, MixedPrecisionBudget};
 pub use cache::{KiviCache, MemoryReport};
@@ -56,3 +57,4 @@ pub use strategies::{
     all as kv_strategies, by_id as kv_strategy_by_id, implemented as implemented_kv_strategies,
     ImplementationStatus, StrategyFamily, StrategyProfile,
 };
+pub use trace::{CacheSnapshot, ForgottenTokens};

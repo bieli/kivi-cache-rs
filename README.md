@@ -246,6 +246,13 @@ The same 560-token prefill is stored at 2 and 4 bits, with residual length 32 an
 cargo run --example config_ablation --release
 ```
 
+**`forget_audit`** - which tokens just left the fp32 window.
+A 2-bit cache with residual length 32 is snapshotted after a 40-token prefill and after each following token. The trace lists the token indices that moved into packed codes, and the indices that are still exact. It does not print K or V tensors.
+
+```bash
+cargo run --example forget_audit --release
+```
+
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.
 A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, outside the fp32 residual window. After the haystack is stored, one decode query tries to read the key back. The table sweeps 2/4/8 bits and residual lengths 32 and 128, and reports whether the key was recovered from packed storage.
 
