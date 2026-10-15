@@ -52,6 +52,9 @@ jobs:
       - name: Run pretrain_cost example
         run: cargo run --example pretrain_cost --release --verbose
 
+      - name: Run rl_determinism example
+        run: cargo run --example rl_determinism --release --verbose
+
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 

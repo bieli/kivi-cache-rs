@@ -158,6 +158,42 @@ fn config_rejects_residual_that_is_not_a_group_multiple() {
 }
 
 #[test]
+fn same_prompt_builds_the_same_cache_twice() {
+    let cfg = KiviConfig::try_new(2, 32, 32).unwrap();
+    let mut keys = fill(64 * 32, 4);
+    let values = fill(64 * 32, 5);
+    keys[3] = 0.5;
+    keys[4] = 1.5;
+    keys[5] = 2.5;
+    let query_a = fill(32, 8);
+    let query_b = fill(32, 9);
+    let scale = 0.25;
+
+    let packed_k = quantize_per_channel(&keys, 1, 1, 64, 32, 2, 32).unwrap();
+    let packed_k_again = quantize_per_channel(&keys, 1, 1, 64, 32, 2, 32).unwrap();
+    assert_eq!(packed_k, packed_k_again);
+    let packed_v = quantize_per_token(&values, 1, 1, 64, 32, 2, 32).unwrap();
+    let packed_v_again = quantize_per_token(&values, 1, 1, 64, 32, 2, 32).unwrap();
+    assert_eq!(packed_v, packed_v_again);
+
+    let mut first = KiviCache::new(cfg, 1, 1, 32).unwrap();
+    let mut second = KiviCache::new(cfg, 1, 1, 32).unwrap();
+    first.append(&keys, &values, 64).unwrap();
+    second.append(&keys, &values, 64).unwrap();
+    assert_eq!(first.dequantize(), second.dequantize());
+    let a = first.attention(&query_a, 1, scale).unwrap();
+    let b = first.attention(&query_b, 1, scale).unwrap();
+    assert_eq!(a, second.attention(&query_a, 1, scale).unwrap());
+    assert_eq!(b, second.attention(&query_b, 1, scale).unwrap());
+    assert_ne!(a, b);
+
+    keys[0] = 50.0;
+    let mut edited = KiviCache::new(cfg, 1, 1, 32).unwrap();
+    edited.append(&keys, &values, 64).unwrap();
+    assert_ne!(first.dequantize().0, edited.dequantize().0);
+}
+
+#[test]
 fn long_sequence_beats_fp16_footprint() {
     let cfg = KiviConfig::try_new(2, 32, 64).unwrap();
     let mut cache = KiviCache::new(cfg, 1, 2, 64).unwrap();

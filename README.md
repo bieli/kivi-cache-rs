@@ -276,6 +276,13 @@ Uses the context-economics report for a Llama-3-8B shape. For a batch of 4 at 32
 cargo run --example pretrain_cost --release
 ```
 
+**`rl_determinism`** - the same prompt builds the same KV cache on every replay.
+Quantization uses group min/max and half-to-even rounding, with no random seed. Two policies are scored against one 64-token 2-bit cache, then the cache is built again. The scores match bit for bit. Changing one prompt value changes policy A's score.
+
+```bash
+cargo run --example rl_determinism --release
+```
+
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.
 A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, outside the fp32 residual window. After the haystack is stored, one decode query tries to read the key back. The table sweeps 2/4/8 bits and residual lengths 32 and 128, and reports whether the key was recovered from packed storage.
 
