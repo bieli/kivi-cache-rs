@@ -58,6 +58,9 @@ jobs:
       - name: Run pytorch_golden example
         run: cargo run --example pytorch_golden --release --verbose
 
+      - name: Run runtime_bridge example
+        run: cargo run --example runtime_bridge --release --verbose
+
       - name: Run passkey_retrieval example
         run: cargo run --example passkey_retrieval --release --verbose
 

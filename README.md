@@ -290,6 +290,13 @@ A fixed `[1, 1, 64, 32]` tensor, element `(t + d) % 4`, is quantized at 2 bits w
 cargo run --example pytorch_golden --release
 ```
 
+**`runtime_bridge`** - the same KV cache behind Candle, Burn, or a custom server.
+Each host keeps its own storage and passes a contiguous `f32` slice in `[batch, kv_heads, seq, dim]` order. A 40-token prefill and three decode steps run through `RuntimeKv`. The three attention outputs and the packed byte counts match. No PyTorch tensor is built.
+
+```bash
+cargo run --example runtime_bridge --release
+```
+
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.
 A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, outside the fp32 residual window. After the haystack is stored, one decode query tries to read the key back. The table sweeps 2/4/8 bits and residual lengths 32 and 128, and reports whether the key was recovered from packed storage.
 
