@@ -1,6 +1,6 @@
 [package]
 name = "kivi-cache"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.70"
 description = "Tuning-free asymmetric 2-bit KV-cache quantization (KIVI, ICML 2024)"
