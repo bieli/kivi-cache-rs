@@ -11,6 +11,36 @@ fn pattern_token() -> [f32; 16] {
 }
 
 #[test]
+fn pytorch_pack_matches_the_published_word_layout() {
+    let dim = 32;
+    let seq = 64;
+    let mut data = vec![0.0f32; seq * dim];
+    for t in 0..seq {
+        for d in 0..dim {
+            data[t * dim + d] = ((t + d) % 4) as f32;
+        }
+    }
+    let keys = quantize_per_channel(&data, 1, 1, seq, dim, 2, 32).unwrap();
+    let values = quantize_per_token(&data, 1, 1, seq, dim, 2, 32).unwrap();
+    let key_codes = keys.pytorch_codes();
+    let value_codes = values.pytorch_codes();
+    assert_eq!(key_codes.len(), (seq / 16) * dim);
+    assert_eq!(value_codes.len(), seq * (dim / 16));
+    assert!(key_codes.chunks(dim).all(|row| row == &key_codes[..dim]));
+    assert_eq!(key_codes[0], 0xE4E4_E4E4);
+    assert_eq!(key_codes[1], 0x3939_3939);
+    assert_eq!(key_codes[2], 0x4E4E_4E4E);
+    assert_eq!(key_codes[3], 0x9393_9393);
+    assert_eq!(value_codes[0], 0xE4E4_E4E4);
+    assert_eq!(value_codes[1], 0xE4E4_E4E4);
+    assert_eq!(value_codes[2], 0x3939_3939);
+    assert!(keys.scale_zero().chunks(2).all(|p| p == [1.0, 0.0]));
+    assert!(values.scale_zero().chunks(2).all(|p| p == [1.0, 0.0]));
+    assert_eq!(keys.dequantize(), data);
+    assert_eq!(values.dequantize(), data);
+}
+
+#[test]
 fn four_bit_half_ties_round_to_even() {
     // scale = 1, so the stored code is the rounded value.
     let mut data = vec![0.0f32; 16];

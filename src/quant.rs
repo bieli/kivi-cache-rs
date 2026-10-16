@@ -68,6 +68,58 @@ impl QuantizedTensor {
         self.streams.iter().map(|s| s.params.len() * 4).sum()
     }
 
+    // Packed `u32` codes in the order of `quant_and_pack_kcache` / `quant_and_pack_vcache`
+    // from the PyTorch KIVI repo (`quant/new_pack.py`).
+    //
+    // Keys: `(batch, heads, tokens / (32/bits), head_dim)`, row-major.
+    // Values: `(batch, heads, tokens, head_dim / (32/bits))`, row-major.
+    // The first element of each packed word sits in the low bits, matching `pack_tensor`.
+    pub fn pytorch_codes(&self) -> Vec<u32> {
+        let feat = 32 / self.bits as usize;
+        let mut out = Vec::new();
+        match self.axis {
+            QuantAxis::PerChannel => {
+                let t_pack = self.tokens / feat;
+                let ints_per_channel = self.group_size * self.bits as usize / 32;
+                for stream in &self.streams {
+                    for tp in 0..t_pack {
+                        let g = tp / ints_per_channel;
+                        let w = tp % ints_per_channel;
+                        for d in 0..self.head_dim {
+                            let idx = (g * self.head_dim + d) * ints_per_channel + w;
+                            out.push(stream.codes[idx]);
+                        }
+                    }
+                }
+            }
+            QuantAxis::PerToken => {
+                let n_ch = self.head_dim / self.group_size;
+                let ints_per_group = self.group_size * self.bits as usize / 32;
+                let d_pack = self.head_dim / feat;
+                for stream in &self.streams {
+                    for t in 0..self.tokens {
+                        for dp in 0..d_pack {
+                            let cg = dp / ints_per_group;
+                            let w = dp % ints_per_group;
+                            let idx = (t * n_ch + cg) * ints_per_group + w;
+                            out.push(stream.codes[idx]);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    // Interleaved `(scale, zero)` pairs, group-major, one head after another.
+    // `zero` is the group minimum. This is the PyTorch `(scale, mn)` pair.
+    pub fn scale_zero(&self) -> Vec<f32> {
+        self.streams
+            .iter()
+            .flat_map(|stream| stream.params.iter().copied())
+            .collect()
+    }
+
     // Reconstruct a dense `[batch, heads, tokens, head_dim]` tensor.
     pub fn dequantize(&self) -> Vec<f32> {
         let mut out = vec![0.0; self.batch * self.heads * self.tokens * self.head_dim];

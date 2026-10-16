@@ -283,6 +283,13 @@ Quantization uses group min/max and half-to-even rounding, with no random seed. 
 cargo run --example rl_determinism --release
 ```
 
+**`pytorch_golden`** - packed codes and attention against PyTorch KIVI.
+A fixed `[1, 1, 64, 32]` tensor, element `(t + d) % 4`, is quantized at 2 bits with group 32. Key and value codes are checked in the `quant/new_pack.py` `pack_tensor` order (first element in the low bits). The same tensor is stored in a cache and the attention output is 1.5 on every channel, matching full-precision attention on that tensor.
+
+```bash
+cargo run --example pytorch_golden --release
+```
+
 **`passkey_retrieval`** - a needle in the middle of a long context is still readable.
 A 7-digit passkey (`2718281`) is planted at token 256 of a 512-token haystack, outside the fp32 residual window. After the haystack is stored, one decode query tries to read the key back. The table sweeps 2/4/8 bits and residual lengths 32 and 128, and reports whether the key was recovered from packed storage.
 
